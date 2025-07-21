@@ -1,0 +1,185 @@
+name: Build Elderly RustDesk APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.13.9'
+  RUST_VERSION: '1.75.0'
+  NDK_VERSION: 'r25c'
+  CARGO_NDK_VERSION: '3.4.0'
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-20.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          df -h
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rustdesk-android
+          shared-key: android-build
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            flutter/.dart_tool
+          key: flutter-${{ hashFiles('flutter/pubspec.lock') }}
+          restore-keys: flutter-
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libxcb-randr0-dev \
+            libxdo-dev \
+            libxfixes-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
+
+      - name: Install cargo-ndk
+        run: |
+          cargo install cargo-ndk --version ${{ env.CARGO_NDK_VERSION }} --locked
+
+      - name: Install flutter_rust_bridge_codegen
+        run: |
+          cargo install flutter_rust_bridge_codegen --version=2.0.0-dev.32
+
+      - name: Generate bridge files
+        run: |
+          cd flutter
+          flutter pub get
+          ~/.cargo/bin/flutter_rust_bridge_codegen generate
+
+      - name: Build Rust libraries for Android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          # Build for all Android architectures
+          cargo ndk \
+            --platform 21 \
+            --target aarch64-linux-android \
+            --target armv7-linux-androideabi \
+            --target x86_64-linux-android \
+            --bindgen \
+            build --release --features flutter,hwcodec
+
+          # Copy libraries to Flutter jniLibs
+          mkdir -p flutter/android/app/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}
+          
+          # ARM64
+          cp target/aarch64-linux-android/release/liblibrustdesk.so \
+             flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so \
+             flutter/android/app/src/main/jniLibs/arm64-v8a/
+          
+          # ARMv7
+          cp target/armv7-linux-androideabi/release/liblibrustdesk.so \
+             flutter/android/app/src/main/jniLibs/armeabi-v7a/librustdesk.so
+          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi/libc++_shared.so \
+             flutter/android/app/src/main/jniLibs/armeabi-v7a/
+          
+          # x86_64
+          cp target/x86_64-linux-android/release/liblibrustdesk.so \
+             flutter/android/app/src/main/jniLibs/x86_64/librustdesk.so
+          cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so \
+             flutter/android/app/src/main/jniLibs/x86_64/
+
+      - name: Build Flutter APK
+        run: |
+          cd flutter
+          flutter clean
+          flutter pub get
+          flutter doctor -v
+          
+          # Build universal APK
+          flutter build apk --release \
+            --target-platform android-arm64,android-arm,android-x64 \
+            --build-name=1.2.4 \
+            --build-number=1
+
+      - name: Verify APK build
+        run: |
+          cd flutter
+          ls -la build/app/outputs/flutter-apk/
+          
+          # Check if APK exists
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            echo "✅ APK build successful"
+            file build/app/outputs/flutter-apk/app-release.apk
+            du -h build/app/outputs/flutter-apk/app-release.apk
+          else
+            echo "❌ APK build failed"
+            exit 1
+          fi
+
+      - name: Rename APK
+        run: |
+          cd flutter
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             ../elderly-rustdesk-$(date +%Y%m%d-%H%M).apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: elderly-rustdesk-apk
+          path: elderly-rustdesk-*.apk
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "🎉 Build completed successfully!"
+          echo "📱 APK: elderly-rustdesk-$(date +%Y%m%d-%H%M).apk"
+          echo "📊 Size: $(du -h elderly-rustdesk-*.apk | cut -f1)"
+          echo "🔗 Download from Actions artifacts"
