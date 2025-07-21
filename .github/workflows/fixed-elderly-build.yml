@@ -1,0 +1,82 @@
+name: Fixed Elderly Build
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android-fixed:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugins-dependencies
+          key: flutter-deps-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y unzip curl git zip
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
+
+      - name: Build Android APK
+        run: |
+          echo "🚀 Building Elderly-friendly RustDesk"
+          echo "   Server: 223.26.59.132"
+          echo "   Key: K5AIzpMpVDwLOOXO+mEGVSPk7uIY0L9QagQ67KUInE="
+          
+          cd flutter
+          # Skip problematic build processes
+          flutter pub get
+          flutter build apk --release
+          
+          # Check if APK exists
+          ls -la build/app/outputs/flutter-apk/
+
+      - name: Rename APK
+        run: |
+          cd flutter
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            cp build/app/outputs/flutter-apk/app-release.apk ../elderly-rustdesk-final.apk
+          else
+            cp build/app/outputs/flutter-apk/*.apk ../elderly-rustdesk-final.apk
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: elderly-rustdesk-apk-final
+          path: elderly-rustdesk-final.apk
+          
+      - name: Build Status
+        run: |
+          echo "✅ Elderly RustDesk APK Build Complete!"
+          echo "📦 Ready for download at: Actions > Elderly APK"
+          echo "🔧 Built-in server: 223.26.59.132"
+          echo "👴 Optimized for elderly users"

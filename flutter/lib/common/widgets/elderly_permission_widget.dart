@@ -96,8 +96,7 @@ class _ElderlyPermissionWidgetState extends State<ElderlyPermissionWidget> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '为了提供更好的远程协助服务，
-需要获取以下权限：',
+            '为了提供更好的远程协助服务，请获取以下权限：',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 18,
