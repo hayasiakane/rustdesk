@@ -49,6 +49,7 @@ class MainActivity : FlutterActivity() {
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
+    private lateinit var elderlyPermissionHelper: ElderlyPermissionHelper
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -95,6 +96,22 @@ class MainActivity : FlutterActivity() {
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             FFI.setClipboardManager(_rdClipboardManager!!)
+        }
+        elderlyPermissionHelper = ElderlyPermissionHelper(this)
+        checkAndRequestEssentialPermissions()
+    }
+
+    private fun checkAndRequestEssentialPermissions() {
+        if (!elderlyPermissionHelper.checkAreAllPermissionsGranted()) {
+            elderlyPermissionHelper.requestAllEssentialPermissions(object : ElderlyPermissionHelper.PermissionCallback {
+                override fun onAllPermissionsGranted() {
+                    Log.d(logTag, "All essential permissions granted for elderly user")
+                }
+                
+                override fun onPermissionsDenied(permissions: List<String>) {
+                    Log.d(logTag, "Permissions denied: $permissions")
+                }
+            })
         }
     }
 
@@ -190,6 +207,22 @@ class MainActivity : FlutterActivity() {
                         mapOf("name" to "media", "value" to MainService.isReady.toString())
                     )
                     result.success(true)
+                }
+                "check_elderly_permissions" -> {
+                    val allGranted = elderlyPermissionHelper.checkAreAllPermissionsGranted()
+                    result.success(allGranted)
+                }
+                "request_elderly_permissions" -> {
+                    elderlyPermissionHelper.requestAllEssentialPermissions(object : ElderlyPermissionHelper.PermissionCallback {
+                        override fun onAllPermissionsGranted() {
+                            result.success(true)
+                        }
+                        
+                        override fun onPermissionsDenied(permissions: List<String>) {
+                            result.success(false)
+                        }
+                    })
+                    return@setMethodCallHandler
                 }
                 "stop_input" -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
