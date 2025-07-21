@@ -68,38 +68,38 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-vcpkg-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install dependencies
+      - name: Install minimal dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -y --fix-missing
           sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
             pkg-config \
+            libclang-dev \
+            libssl-dev \
             libasound2-dev \
-            libxcb-dev \
-            libxdo-dev \
-            libxfixes-dev \
+            libpulse-dev \
+            libdbus-1-dev \
+            libgtk-3-dev \
+            libvpx-dev \
+            libopus-dev \
+            libyuv-dev \
+            libaom-dev \
             libxcb1-dev \
             libx11-dev \
-            libxext-dev \
+            libxfixes-dev \
             libxrandr-dev \
             libxcursor-dev \
             libxdamage-dev \
             libxinerama-dev \
+            libxkbcommon-dev \
             libgtk-3-dev
 
-      - name: Setup vcpkg
+      - name: Skip vcpkg for Android build
         run: |
-          git clone https://github.com/microsoft/vcpkg ~/vcpkg
-          cd ~/vcpkg
-          ./bootstrap-vcpkg.sh
-          echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
-          echo "$HOME/vcpkg" >> $GITHUB_PATH
-
-      - name: Install vcpkg ports
-        run: |
-          $VCPKG_ROOT/vcpkg install libvpx:arm64-android libvpx:arm-android libvpx:x64-android
-          $VCPKG_ROOT/vcpkg install libyuv:arm64-android libyuv:arm-android libyuv:x64-android
-          $VCPKG_ROOT/vcpkg install opus:arm64-android opus:arm-android opus:x64-android
-          $VCPKG_ROOT/vcpkg install aom:arm64-android aom:arm-android aom:x64-android
+          echo "Using system packages instead of vcpkg for Android build"
+          export VCPKG_ROOT=/opt/hostedtoolcache/empty
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version=3.2.0

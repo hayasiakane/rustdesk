@@ -3,7 +3,8 @@
     "allow": [
       "Bash(ls:*)",
       "Bash(git submodule:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(sh:*)"
     ],
     "deny": []
   }
